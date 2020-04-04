@@ -9,6 +9,29 @@ require("dotenv").config(); // dotenv - Manages envinroment variables
 
 // Global Constants
 const BOT_TOKEN = process.env.TELEGRAM_API_BOT_TOKEN;
+const CHOICE_SEPARATORS = ["|", ":", " "];
+const CHOICE_FLAVOR_TEXT = [
+    { first: "I choose ", second: "." },
+    { first: "", second: " sounds better for me!" },
+    { first: "IT'S TIME TO DECIDE. ", second: " has been chosen." },
+    { first: "You're crazy if you don't pick ", second: "!" },
+    { first: "I dunno... ", second: " maybe?" },
+];
+const CONVERT_VALID_UNITS = {
+    temperature: ["celsius", "c", "farenheit", "f", "kelvin", "k"],
+    measure: [
+        "centimeter",
+        "cm",
+        "meter",
+        "m",
+        "kilometer",
+        "km",
+        "inches",
+        "in",
+        "feet",
+        "ft",
+    ],
+};
 const DATE_TIME_FORMAT_OPTIONS = {
     weekday: "long",
     year: "numeric",
@@ -17,11 +40,12 @@ const DATE_TIME_FORMAT_OPTIONS = {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
-    hour12: false
+    hour12: false,
 };
 
 // const PATTERN_ECHO_COMMAND = /^\/echo (.+)/i;
 const PATTERN_CHOOSE_COMMAND = /^\/choose (.+)$/i;
+const PATTERN_CONVERT_COMMAND = /^\/convert (.+) (.+) (.+)$/i;
 const PATTERN_HELP_COMMAND = /^\/help$/i;
 const PATTERN_TIME_COMMAND = /^\/time$/i;
 const PATTERN_TIMEZONE_COMMAND = /^\/time (.+)$/i;
@@ -56,7 +80,7 @@ bot.onText(PATTERN_ECHO_COMMAND, (msg, match) => {
 */
 
 // Help - Describes commands and other details
-bot.onText(PATTERN_HELP_COMMAND, msg => {
+bot.onText(PATTERN_HELP_COMMAND, (msg) => {
     const chatId = msg.chat.id;
 
     // Console Log
@@ -79,7 +103,7 @@ bot.onText(PATTERN_HELP_COMMAND, msg => {
 });
 
 // Time: Requests local time
-bot.onText(PATTERN_TIME_COMMAND, msg => {
+bot.onText(PATTERN_TIME_COMMAND, (msg) => {
     const chatId = msg.chat.id;
 
     // Console Log
@@ -139,7 +163,7 @@ bot.onText(PATTERN_TIMEZONE_COMMAND, (msg, match) => {
                 "The time (UTC " +
                 (timezoneOffset > 0 ? "+" : "") +
                 timezoneOffset.toLocaleString("en-US", {
-                    minimumIntegerDigits: 2
+                    minimumIntegerDigits: 2,
                 }) +
                 ":00) is: " +
                 dateFormatter.format(offsetDate);
@@ -154,11 +178,183 @@ bot.onText(PATTERN_TIMEZONE_COMMAND, (msg, match) => {
 
 // Listen for choices
 bot.onText(PATTERN_CHOOSE_COMMAND, (msg, match) => {
-    // let options = match[1].split(":");
+    const chatId = msg.chat.id;
+    const options = match[1];
+
+    // Console Log
+    console.log(
+        "Choice Request: Choose between " +
+            options +
+            ", from user " +
+            msg.from.username +
+            ":" +
+            msg.from.id +
+            "; Chat: " +
+            chatId
+    );
+
+    let response;
+    let splitOptions;
+
+    if (options.includes(CHOICE_SEPARATORS[0])) {
+        splitOptions = options.split(CHOICE_SEPARATORS[0]);
+    } else if (options.includes(CHOICE_SEPARATORS[1])) {
+        splitOptions = options.split(CHOICE_SEPARATORS[1]);
+    } else if (options.includes(CHOICE_SEPARATORS[2])) {
+        splitOptions = options.split(CHOICE_SEPARATORS[2]);
+    } else {
+        splitOptions = [null, null];
+    }
+
+    const optionA = splitOptions[0];
+    const optionB = splitOptions[1];
+
+    if (optionA === null || optionB === null) {
+        response =
+            "I can't choose anything. I need the options to be separated by either: \"" +
+            CHOICE_SEPARATORS[0] +
+            '", "' +
+            CHOICE_SEPARATORS[1] +
+            '" or a white space';
+    } else {
+        const choosenOption = Math.floor(Math.random() * 2);
+        const currentFlavorText = Math.floor(Math.random() * 5);
+        response =
+            CHOICE_FLAVOR_TEXT[currentFlavorText].first +
+            (choosenOption < 1 ? optionA : optionB) +
+            CHOICE_FLAVOR_TEXT[currentFlavorText].second;
+    }
+
+    bot.sendMessage(chatId, response);
+});
+
+// Listen for convert command
+bot.onText(PATTERN_CONVERT_COMMAND, (msg, match) => {
+    const chatId = msg.chat.id;
+    const userRequestedValue = match[1];
+    const unitFrom = match[2];
+    const unitTo = match[3];
+
+    // Console Log
+    console.log(
+        "Choice Request: Convert " +
+            userRequestedValue +
+            unitFrom +
+            " to " +
+            unitTo +
+            ", from user " +
+            msg.from.username +
+            ":" +
+            msg.from.id +
+            "; Chat: " +
+            chatId
+    );
+
+    let response;
+    const parsedValue = parseInt(userRequestedValue);
+
+    if (isNaN(parsedValue)) {
+        response =
+            "I cannot convert this value. Did you tell me correctly?\n" +
+            "I need a value and unit from to: <value> <unit from> <unit to>";
+    }
+
+    const from = unitFrom.toLowerCase();
+    const to = unitTo.toLowerCase();
+
+    if (
+        !CONVERT_VALID_UNITS.measure.includes(from) &&
+        !CONVERT_VALID_UNITS.temperature.includes(from) &&
+        !CONVERT_VALID_UNITS.measure.includes(to) &&
+        !CONVERT_VALID_UNITS.temperature.includes(to)
+    ) {
+        response = "I cannot convert to one of these units you told me.";
+    } else {
+        let convertedValue;
+        let unitShortName;
+
+        // Temperature conversion
+        if (
+            CONVERT_VALID_UNITS.temperature.includes(from) &&
+            CONVERT_VALID_UNITS.temperature.includes(to)
+        ) {
+            const temperatures = CONVERT_VALID_UNITS.temperature;
+
+            // C to K
+            if (
+                (from === temperatures[0] || from === temperatures[1]) &&
+                (to === temperatures[4] || to === temperatures[5])
+            ) {
+                convertedValue = parsedValue + 273.15;
+                unitShortName = temperatures[5].toUpperCase();
+            }
+
+            // K to C
+            if (
+                (from === temperatures[4] || from === temperatures[5]) &&
+                (to === temperatures[0] || to === temperatures[1])
+            ) {
+                convertedValue = parsedValue - 273.15;
+                unitShortName = temperatures[1].toUpperCase();
+            }
+
+            // C to F
+            if (
+                (from === temperatures[0] || from === temperatures[1]) &&
+                (to === temperatures[2] || to === temperatures[3])
+            ) {
+                convertedValue = parsedValue * 1.8 + 32;
+                unitShortName = temperatures[3].toUpperCase();
+            }
+
+            // F to C
+            if (
+                (from === temperatures[2] || from === temperatures[3]) &&
+                (to === temperatures[0] || to === temperatures[1])
+            ) {
+                convertedValue = (parsedValue - 32) / 1.8;
+                unitShortName = temperatures[1].toUpperCase();
+            }
+
+            // K to F
+            if (
+                (from === temperatures[4] || from === temperatures[5]) &&
+                (to === temperatures[2] || to === temperatures[3])
+            ) {
+                convertedValue = (parsedValue - 273.15) * 1.8 + 32;
+                unitShortName = temperatures[3].toUpperCase();
+            }
+
+            // F to K
+            if (
+                (from === temperatures[2] || from === temperatures[3]) &&
+                (to === temperatures[4] || to === temperatures[5])
+            ) {
+                convertedValue = (parsedValue - 32) / 1.8 + 273.15;
+                unitShortName = temperatures[5].toUpperCase();
+            }
+
+            response =
+                "The converted temperature is " +
+                (Math.round(convertedValue * 100) / 100).toFixed(2) +
+                unitShortName;
+        } else if (
+            CONVERT_VALID_UNITS.measure.includes(from) &&
+            CONVERT_VALID_UNITS.measure.includes(to)
+        ) {
+            const measures = CONVERT_VALID_UNITS.measure;
+
+            // TODO measure conversion
+        } else {
+            response = "I cannot convert between different types of unit.";
+        }
+    }
+
+    bot.sendMessage(chatId, response);
 });
 
 // Listen for messages with a mention
-bot.onText(PATTERN_MENTION_ONLY, msg => {
+bot.onText(PATTERN_MENTION_ONLY, (msg) => {
     const chatId = msg.chat.id;
 
     // Console Log
